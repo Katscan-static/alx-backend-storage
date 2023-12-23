@@ -1,27 +1,34 @@
 #!/usr/bin/env python3
-"""
-This module defines the function `get_page` as well as a decorator for keeping
-track of calls to `get_page` with a particular url
-"""
+""" expiring web cache module """
+
 import redis
 import requests
-from functools import wraps
 from typing import Callable
+from functools import wraps
+
+redis = redis.Redis()
 
 
-def access_count(get_page: Callable[[str], str]) -> Callable[[str], str]:
-    """Track calls to `get_page` with a particular url """
-    @wraps(get_page)
-    def wrapper(url: str) -> str:
-        key = f"count:{url}"
-        store = redis.Redis()
-        store.incr(key)
-        store.expire(key, 10)
-        return get_page(url)
+def wrap_requests(fn: Callable) -> Callable:
+    """ Decorator wrapper """
+
+    @wraps(fn)
+    def wrapper(url):
+        """ Wrapper for decorator guy """
+        redis.incr(f"count:{url}")
+        cached_response = redis.get(f"cached:{url}")
+        if cached_response:
+            return cached_response.decode('utf-8')
+        result = fn(url)
+        redis.setex(f"cached:{url}", 10, result)
+        return result
+
     return wrapper
 
 
-@access_count
+@wrap_requests
 def get_page(url: str) -> str:
-    """Obtain and return the HTML content of a particular URL, `url` """
-    return requests.get(url).text
+    """get page self descriptive
+    """
+    response = requests.get(url)
+    return response.text
